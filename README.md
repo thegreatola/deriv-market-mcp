@@ -86,7 +86,7 @@ MCP client (Claude, any agent)
 ## Tests
 
 ```bash
-npm test          # 18 offline tests against a fake socket, no network
+npm test          # 19 offline tests against a fake socket, no network
 npm run test:live # one test against the real feed
 npm run smoke     # builds, starts the server over stdio and calls every tool
 ```

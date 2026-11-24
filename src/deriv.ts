@@ -87,7 +87,10 @@ export class DerivClient {
 
   constructor(opts: DerivClientOptions = {}) {
     this.url = opts.url ?? process.env.DERIV_WS_URL ?? DEFAULT_URL;
-    this.minIntervalMs = opts.minIntervalMs ?? Number(process.env.DERIV_MIN_INTERVAL_MS ?? 500);
+    // A bad value (e.g. "abc" -> NaN) would silently turn pacing off, so fall back to 500.
+    const envInterval = Number(process.env.DERIV_MIN_INTERVAL_MS);
+    this.minIntervalMs =
+      opts.minIntervalMs ?? (Number.isFinite(envInterval) && envInterval >= 0 ? envInterval : 500);
     this.timeoutMs = opts.timeoutMs ?? 10_000;
     this.idleCloseMs = opts.idleCloseMs ?? 60_000;
     this.socketFactory =

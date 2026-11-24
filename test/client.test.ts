@@ -61,3 +61,15 @@ test("times out a request that gets no reply, and keeps working after", async ()
   assert.equal(ok.ok, 1);
   client.close();
 });
+
+test("a bad DERIV_MIN_INTERVAL_MS falls back to 500 ms instead of turning pacing off", () => {
+  const before = process.env.DERIV_MIN_INTERVAL_MS;
+  process.env.DERIV_MIN_INTERVAL_MS = "abc";
+  try {
+    const client = new DerivClient({ socketFactory: fakeDeriv(() => undefined).factory });
+    assert.equal((client as any).minIntervalMs, 500);
+  } finally {
+    if (before === undefined) delete process.env.DERIV_MIN_INTERVAL_MS;
+    else process.env.DERIV_MIN_INTERVAL_MS = before;
+  }
+});
