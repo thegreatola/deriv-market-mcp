@@ -79,6 +79,8 @@ MCP client (Claude, any agent)
 
 **The oldest candle is dropped when it is partial.** Deriv cuts the requested window mid-period, so the first bar can be a fragment (a "daily" bar that starts at 00:56). Buckets are aligned to UTC, so the server asks for one extra bar and drops the first one if its timestamp is off the period boundary.
 
+**You get the number of candles you ask for, weekends included.** Deriv's `count` is a span of time (count × candle size back from now), not a number of bars. Across a weekend or a market's daily break it returns fewer bars than asked for: six daily gold candles come back as five. When that happens, the server asks once more for a window widened in proportion to what came back. It does this at most twice, and stops early if history has run out. These are follow-up requests for more data, not retries of a failed request, so the rate-limit rule above still holds. An eval of an agent using this server found the bug: it had been graded against a short window, and one agent compared the wrong 23 hours.
+
 **Caching protects the budget.** The symbol list is cached for 10 minutes, trading hours for an hour, and a price for one second. Resolving "EUR/USD" to `frxEURUSD` doesn't cost a request after the first call.
 
 **Unlisted codes still work.** The feed serves history for some symbols its own list leaves out, so an unknown code is passed through to Deriv instead of being refused locally.
@@ -91,7 +93,7 @@ npm run test:live # one test against the real feed
 npm run smoke     # builds, starts the server over stdio and calls every tool
 ```
 
-The offline tests check pacing, one shared socket, reply matching, that a rate-limit refusal is sent exactly once, timeouts, symbol names, that the subscribing `ticks` call is never sent, partial-candle dropping, and that tool errors come back as `isError` instead of crashing the server. CI runs them on Node 22 and 24.
+The offline tests check pacing, one shared socket, reply matching, that a rate-limit refusal is sent exactly once, timeouts, symbol names, that the subscribing `ticks` call is never sent, partial-candle dropping, full candle counts across weekends (with a fake feed that has no weekend bars), and that tool errors come back as `isError` instead of crashing the server. CI runs them on Node 22 and 24.
 
 ## Limits
 

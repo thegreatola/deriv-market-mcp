@@ -79,3 +79,40 @@ test("getCandles asks for one extra, drops the partial bar and trims to count", 
   assert.equal(series.lastCandleForming, true);
   client.close();
 });
+
+const D1 = 86400;
+
+/** Like Deriv: count is a span of time back from now, and there are no weekend bars. */
+function weekdayFeed(maxBars = Infinity) {
+  return (req: Record<string, any>) => {
+    if (!req.ticks_history) return undefined;
+    const today = Math.floor(Date.now() / 1000 / D1) * D1;
+    const epochs = [];
+    for (let e = today - (req.count - 1) * D1; e <= today; e += D1) {
+      const day = new Date(e * 1000).getUTCDay();
+      if (day !== 0 && day !== 6) epochs.push(e);
+    }
+    return { candles: epochs.slice(-maxBars).map((epoch) => ({ epoch, open: 1, high: 2, low: 0.5, close: 1.5 })) };
+  };
+}
+
+test("getCandles returns the count asked for, even across weekends", async () => {
+  for (const count of [5, 6, 10, 30]) {
+    const { markets, fake, client } = setup(weekdayFeed());
+    const series = await markets.getCandles("frxEURUSD", "D1", count);
+    const requests = fake.sent.filter((s) => s.req.ticks_history);
+    assert.equal(series.candles.length, count, `count ${count}`);
+    assert.ok(series.candles.every((c) => ![0, 6].includes(new Date(c.time).getUTCDay())), "weekday bars only");
+    assert.ok(requests.length <= 3, `at most 2 extra requests, got ${requests.length - 1}`);
+    if (requests.length > 1) assert.ok(requests[1].req.count > requests[0].req.count, "the retry asks for a wider window");
+    client.close();
+  }
+});
+
+test("getCandles stops widening when history runs out", async () => {
+  const { markets, fake, client } = setup(weekdayFeed(3));
+  const series = await markets.getCandles("frxEURUSD", "D1", 10);
+  assert.equal(series.candles.length, 3);
+  assert.equal(fake.sent.filter((s) => s.req.ticks_history).length, 2, "one retry, no more once it stops growing");
+  client.close();
+});

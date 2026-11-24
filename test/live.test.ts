@@ -33,12 +33,14 @@ test("live: lists markets, reads prices, candles and hours", { skip: !live }, as
 
     const daily = await markets.getCandles("frxEURUSD", "D1", 30);
     for (const c of daily.candles) assert.equal(c.epoch % 86400, 0, `daily bar at ${c.time} is not 00:00 UTC`);
+    assert.equal(daily.candles.length, 30, "weekends don't shorten the series");
 
     const hours = await markets.getTradingHours("EUR/USD");
     assert.ok(hours.tradingDays.includes("Mon"));
 
-    // Five reads, one cached symbol list: nothing more was sent.
-    assert.equal(client.sentCount, 5);
+    // Five reads and one cached symbol list. Daily bars across weekends may need up
+    // to two wider requests to fill the count; nothing else is sent.
+    assert.ok(client.sentCount >= 5 && client.sentCount <= 7, `sent ${client.sentCount}`);
   } finally {
     client.close();
   }

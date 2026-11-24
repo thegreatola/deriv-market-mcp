@@ -166,24 +166,33 @@ export class Markets {
 
     // Ask for one extra: the oldest bar of a series is often a partial bucket
     // (the window starts mid-period), and it gets dropped below.
-    const res = await this.client.request({
-      ticks_history: symbol,
-      style: "candles",
-      granularity,
-      count: count + 1,
-      end: "latest",
-    });
-    const raw: any[] = res.candles ?? [];
-    if (raw.length === 0) throw emptyResponse(symbol);
+    let ask = count + 1;
+    let candles = await this.fetchCandles(symbol, granularity, ask);
+    if (candles.length === 0) throw emptyResponse(symbol);
 
-    let candles = raw.map(toCandle);
-    candles = dropPartialFirst(candles, granularity);
+    // Deriv's count is a span of time (count x granularity back from now), not a
+    // number of bars, so weekends and session breaks return fewer bars than asked:
+    // count 6 on daily gold across a weekend gives 4 or 5. Widen the window in
+    // proportion to what came back, at most twice, and stop when history runs out.
+    for (let i = 0; i < 2 && candles.length < count; i++) {
+      const next = Math.min(MAX_CANDLES, Math.ceil((ask * (count + 1)) / Math.max(candles.length, 1)) + 2);
+      if (next <= ask) break;
+      const wider = await this.fetchCandles(symbol, granularity, next);
+      if (wider.length <= candles.length) break;
+      candles = wider;
+      ask = next;
+    }
     if (candles.length > count) candles = candles.slice(candles.length - count);
 
     const last = candles[candles.length - 1];
     const lastCandleForming = last ? last.epoch + granularity > Date.now() / 1000 : false;
 
     return { symbol, name, timeframe, candles, lastCandleForming };
+  }
+
+  private async fetchCandles(symbol: string, granularity: number, count: number): Promise<Candle[]> {
+    const res = await this.client.request({ ticks_history: symbol, style: "candles", granularity, count, end: "latest" });
+    return dropPartialFirst((res.candles ?? []).map(toCandle), granularity);
   }
 
   async getTradingHours(input: string): Promise<TradingHours> {
@@ -221,6 +230,9 @@ export class Markets {
  * stamped off the period boundary (a "daily" bar starting at 00:56).
  * Buckets are aligned to UTC, so a real bar's epoch divides evenly.
  */
+/** The most bars Deriv returns in one ticks_history request. */
+const MAX_CANDLES = 5000;
+
 export function dropPartialFirst(candles: Candle[], granularity: number): Candle[] {
   if (candles.length > 0 && candles[0].epoch % granularity !== 0) return candles.slice(1);
   return candles;
